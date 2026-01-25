@@ -2,15 +2,51 @@
     body {
         padding-top: 10px;
         font-family: 'Helvetica Neue', Arial, sans-serif;
+        /* Prevent zoom on mobile inputs */
+        touch-action: manipulation;
     }
 
+    /* Option Buttons (Chips) */
+    .option-group {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 5px;
+    }
+
+    .option-btn {
+        border: 1px solid #ced4da;
+        border-radius: 20px;
+        padding: 8px 16px;
+        background-color: #f8f9fa;
+        color: #495057;
+        cursor: pointer;
+        font-size: 0.95rem;
+        transition: all 0.2s ease;
+        user-select: none;
+    }
+
+    .option-btn:hover {
+        background-color: #e9ecef;
+    }
+
+    .option-btn.selected {
+        background-color: #0d6efd;
+        color: white;
+        border-color: #0d6efd;
+        font-weight: bold;
+        box-shadow: 0 2px 4px rgba(13, 110, 253, 0.3);
+    }
+
+    /* Bullet Qty Controls */
     .qty-btn {
         width: 45px;
         height: 45px;
         font-size: 1.2rem;
         font-weight: bold;
-        border-radius: 8px;
+        border-radius: 12px;
         margin: 0 2px;
+        touch-action: manipulation;
     }
 
     .qty-input {
@@ -19,26 +55,39 @@
         font-size: 1.2rem;
         border: none;
         background: transparent;
+        font-weight: bold;
     }
 
     .bullet-row {
-        border-bottom: 1px solid #eee;
-        padding: 10px 0;
+        background: white;
+        border: 1px solid #eee;
+        border-radius: 12px;
+        padding: 12px;
+        margin-bottom: 8px;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
     }
 
     .bullet-label {
         font-weight: bold;
-        margin-bottom: 5px;
+        font-size: 1.05rem;
+        margin-bottom: 2px;
     }
 
     .bullet-info {
         font-size: 0.85rem;
-        color: #666;
+        color: #888;
     }
 
+    /* Tabs */
     .nav-tabs .nav-link {
-        padding: 10px 5px;
-        font-size: 0.9rem;
+        padding: 12px 5px;
+        font-size: 0.95rem;
+        color: #6c757d;
+    }
+
+    .nav-tabs .nav-link.active {
+        font-weight: bold;
+        color: #0d6efd;
     }
 
     /* Loading Overlay */
