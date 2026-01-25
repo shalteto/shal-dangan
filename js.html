@@ -1,0 +1,495 @@
+<script>
+    /**
+     * Global App State
+     */
+    const APP_DATA = {
+        guns: [],
+        bulletTypes: [],
+        places: [],
+        uses: [],
+        inventory: {} // Key: "use|bullet_type", Value: Qty
+    };
+
+    // Loading Indicator
+    const toggleLoading = (show) => {
+        document.getElementById('loadingOverlay').style.display = show ? 'flex' : 'none';
+    };
+
+    // Initialize
+    window.onload = function () {
+        console.log('Window Loaded'); // Debug Log
+        toggleLoading(true);
+        google.script.run
+            .withSuccessHandler((data) => {
+                console.log('Data Loaded', data);
+                onDataLoaded(data);
+            })
+            .withFailureHandler((e) => {
+                console.error('Init Failed', e);
+                onFailure(e);
+            })
+            .getMetaData();
+
+        // Set today's date for date inputs
+        const today = new Date().toISOString().split('T')[0];
+        document.querySelectorAll('input[type="date"]').forEach(el => el.value = today);
+        document.getElementById('transferDate').value = today;
+
+        // Set up Event Listeners
+        setupEventListeners();
+    };
+
+    function onDataLoaded(data) {
+        APP_DATA.guns = data.guns;
+        APP_DATA.bulletTypes = data.bulletTypes;
+        APP_DATA.places = data.places;
+        APP_DATA.uses = data.uses;
+        APP_DATA.inventory = data.inventory || {};
+
+        renderAllDropdowns();
+
+        // Initialize Settings Tables
+        Settings.renderTable('gun');
+        Settings.renderTable('bullet_type');
+        Settings.renderTable('place');
+        Settings.renderTable('use');
+
+        toggleLoading(false);
+    }
+
+    function onFailure(error) {
+        toggleLoading(false);
+        alert('Error: ' + error.message);
+    }
+
+    /**
+     * Render Dropdowns
+     */
+    function renderAllDropdowns() {
+        // Uses
+        const useOptions = createOptions(APP_DATA.uses.map(u => u.use));
+        document.getElementById('consumptionUse').innerHTML = '<option value="" selected disabled>選択してください</option>' + useOptions;
+        document.getElementById('purchaseUse').innerHTML = '<option value="" selected disabled>選択してください</option>' + useOptions;
+        document.getElementById('transferFromUse').innerHTML = '<option value="" selected disabled>選択してください</option>' + useOptions;
+        document.getElementById('transferToUse').innerHTML = '<option value="" selected disabled>選択してください</option>' + useOptions;
+
+        // Guns (Filter Air Guns for Purchase?) Spec says "Air gun excluded from options" for Purchase
+        const allGuns = APP_DATA.guns.map(g => g.gun);
+        const purchaseGuns = APP_DATA.guns.filter(g => g.type !== '空気銃').map(g => g.gun);
+
+        document.getElementById('consumptionGun').innerHTML = '<option value="" selected disabled>選択してください</option>' + createOptions(allGuns);
+        document.getElementById('purchaseGun').innerHTML = '<option value="" selected disabled>選択してください</option>' + createOptions(purchaseGuns);
+        document.getElementById('transferGun').innerHTML = '<option value="" selected disabled>選択してください</option>' + createOptions(allGuns);
+
+        // Places (Gun Shop only for Purchase)
+        const gunShops = APP_DATA.places.filter(p => p.type === '銃砲店').map(p => p.place);
+        document.getElementById('purchasePlace').innerHTML = '<option value="" selected disabled>選択してください</option>' + createOptions(gunShops);
+
+        // Places (Shooting Range for Consumption)
+        const ranges = APP_DATA.places.filter(p => p.type === '射撃場').map(p => p.place);
+        document.getElementById('consumptionPlaceSelect').innerHTML = '<option value="" selected disabled>射撃場を選択</option>' + createOptions(ranges);
+    }
+
+    function createOptions(list) {
+        return list.map(item => `<option value="${item}">${item}</option>`).join('');
+    }
+
+    /**
+     * Event Listeners & Logic
+     */
+    function setupEventListeners() {
+        // --- Consumption ---
+        // Toggle Place Input based on Use
+        document.getElementById('consumptionUse').addEventListener('change', function () {
+            const isShooting = this.value === '射撃';
+            document.getElementById('consumptionPlaceSelect').style.display = isShooting ? 'block' : 'none';
+            document.getElementById('consumptionPlaceInput').style.display = isShooting ? 'none' : 'block';
+
+            // Required attribute updates
+            document.getElementById('consumptionPlaceSelect').required = isShooting;
+            document.getElementById('consumptionPlaceInput').required = !isShooting;
+
+            // Refresh Bullet Section if Gun is already selected (inventory depends on Use)
+            if (document.getElementById('consumptionGun').value) {
+                updateConsumptionBullets();
+            }
+        });
+
+        document.getElementById('consumptionGun').addEventListener('change', updateConsumptionBullets);
+
+        // --- Purchase ---
+        document.getElementById('purchaseGun').addEventListener('change', updatePurchaseBullets);
+
+        // --- Transfer ---
+        document.getElementById('transferFromUse').addEventListener('change', updateTransferSource);
+        document.getElementById('transferGun').addEventListener('change', updateTransferSource);
+        document.getElementById('transferBulletType').addEventListener('change', updateTransferMax);
+        document.getElementById('transferToUse').addEventListener('change', validateTransferDest);
+
+        // --- Forms ---
+        document.getElementById('consumptionForm').addEventListener('submit', handleFormSubmit);
+        document.getElementById('purchaseForm').addEventListener('submit', handleFormSubmit);
+        document.getElementById('transferForm').addEventListener('submit', handleTransferSubmit);
+
+        // --- Settings ---
+        document.getElementById('saveEditBtn').addEventListener('click', Settings.save);
+    }
+
+    /**
+     * Logic: Consumption Bullet Rows
+     */
+    function updateConsumptionBullets() {
+        const gunName = document.getElementById('consumptionGun').value;
+        const use = document.getElementById('consumptionUse').value;
+        const container = document.getElementById('consumptionBulletSection');
+        container.innerHTML = '';
+
+        if (!gunName || !use) return;
+
+        const gun = APP_DATA.guns.find(g => g.gun === gunName);
+        // Match bullet types by SIZE
+        const bullets = APP_DATA.bulletTypes.filter(b => String(b.size) === String(gun.size));
+
+        if (bullets.length === 0) {
+            container.innerHTML = '<div class="alert alert-warning">適合する弾種がありません</div>';
+            return;
+        }
+
+        bullets.forEach(b => {
+            // Check Inventory
+            const key = `${use}|${b.bullet_type}`;
+            const qty = APP_DATA.inventory[key] || 0;
+
+            if (qty <= 0) return; // Don't show if no inventory
+
+            const div = document.createElement('div');
+            div.className = 'bullet-row';
+            div.innerHTML = `
+      <div class="d-flex justify-content-between align-items-center">
+        <div>
+          <div class="bullet-label">${b.bullet_type}</div>
+          <div class="bullet-info">残: ${qty}発</div>
+        </div>
+        <div class="d-flex align-items-center">
+          <button type="button" class="btn btn-outline-danger qty-btn" onclick="adjustQty(this, -1, ${qty})">-</button>
+          <input type="number" name="qty_${b.bullet_type}" class="qty-input" value="0" readonly>
+          <button type="button" class="btn btn-outline-success qty-btn" onclick="adjustQty(this, 1, ${qty})">+</button>
+        </div>
+      </div>
+    `;
+            container.appendChild(div);
+        });
+
+        if (container.children.length === 0) {
+            container.innerHTML = '<div class="text-muted p-2">消費可能な弾（在庫）がありません</div>';
+        }
+    }
+
+    /**
+     * Logic: Purchase Bullet Rows
+     */
+    function updatePurchaseBullets() {
+        const gunName = document.getElementById('purchaseGun').value;
+        const container = document.getElementById('purchaseBulletSection');
+        container.innerHTML = '';
+
+        if (!gunName) return;
+
+        const gun = APP_DATA.guns.find(g => g.gun === gunName);
+        const bullets = APP_DATA.bulletTypes.filter(b => String(b.size) === String(gun.size));
+
+        if (bullets.length === 0) {
+            container.innerHTML = '<div class="alert alert-warning">適合する弾種がありません</div>';
+            return;
+        }
+
+        bullets.forEach(b => {
+            const div = document.createElement('div');
+            div.className = 'bullet-row';
+            div.innerHTML = `
+      <div class="d-flex justify-content-between align-items-center mb-1">
+        <div class="bullet-label">${b.bullet_type}</div>
+        <input type="number" name="qty_${b.bullet_type}" class="qty-input" value="0" readonly style="width:80px">
+      </div>
+      <div class="d-flex justify-content-end">
+        <button type="button" class="btn btn-outline-secondary qty-btn ms-1" onclick="adjustPurchase(this, 10)">+10</button>
+        <button type="button" class="btn btn-outline-secondary qty-btn ms-1" onclick="adjustPurchase(this, 1)">+1</button>
+        <button type="button" class="btn btn-outline-secondary qty-btn ms-1" onclick="adjustPurchase(this, -1)">-1</button>
+        <button type="button" class="btn btn-outline-secondary qty-btn ms-1" onclick="adjustPurchase(this, -10)">-10</button>
+      </div>
+    `;
+            container.appendChild(div);
+        });
+    }
+
+    // Helper for Consumption
+    function adjustQty(btn, delta, max) {
+        const input = btn.parentNode.querySelector('input');
+        let val = parseInt(input.value) || 0;
+        let newVal = val + delta;
+        if (newVal < 0) newVal = 0;
+        if (newVal > max) newVal = max; // Consumption can't exceed inventory
+        input.value = newVal;
+    }
+
+    // Helper for Purchase
+    function adjustPurchase(btn, delta) {
+        const input = btn.parentNode.parentNode.querySelector('input');
+        let val = parseInt(input.value) || 0;
+        let newVal = val + delta;
+        if (newVal < 0) newVal = 0;
+        input.value = newVal;
+    }
+
+    /**
+     * Logic: Transfer (Use -> Use)
+     */
+    function updateTransferSource() {
+        const use = document.getElementById('transferFromUse').value;
+        const gunName = document.getElementById('transferGun').value;
+        const bulletSelect = document.getElementById('transferBulletType');
+        bulletSelect.innerHTML = '<option value="" selected disabled>選択してください</option>';
+
+        document.getElementById('transferCurrentInventory').textContent = '0';
+        document.getElementById('transferQuantity').max = 0;
+        document.getElementById('transferQuantity').value = '';
+
+        if (!use || !gunName) return;
+
+        const gun = APP_DATA.guns.find(g => g.gun === gunName);
+        const bullets = APP_DATA.bulletTypes.filter(b => String(b.size) === String(gun.size));
+
+        // Only show bullets that have inventory for this use
+        bullets.forEach(b => {
+            const key = `${use}|${b.bullet_type}`;
+            const qty = APP_DATA.inventory[key] || 0;
+            if (qty > 0) {
+                const opt = document.createElement('option');
+                opt.value = b.bullet_type;
+                opt.text = `${b.bullet_type} (残: ${qty})`;
+                opt.dataset.qty = qty;
+                bulletSelect.appendChild(opt);
+            }
+        });
+    }
+
+    function updateTransferMax() {
+        const select = document.getElementById('transferBulletType');
+        const opt = select.options[select.selectedIndex];
+        if (opt && opt.dataset.qty) {
+            const qty = parseInt(opt.dataset.qty);
+            document.getElementById('transferCurrentInventory').textContent = qty;
+            document.getElementById('transferQuantity').max = qty;
+        }
+    }
+
+    function validateTransferDest() {
+        const from = document.getElementById('transferFromUse').value;
+        const to = document.getElementById('transferToUse').value;
+        if (from && to && from === to) {
+            alert('変更元と変更先には異なる用途を指定してください');
+            document.getElementById('transferToUse').value = "";
+        }
+    }
+
+    /**
+     * Form Handling (Cons/Purch)
+     */
+    function handleFormSubmit(e) {
+        e.preventDefault();
+        const form = e.target;
+        const inputs = form.querySelectorAll('input[name^="qty_"]');
+        const mode = form.mode.value;
+
+        const commonData = {
+            mode: mode,
+            date: form.date.value,
+            use: form.use.value,
+            gun: form.gun.value
+        };
+
+        if (mode === 'consumption') {
+            // Place logic
+            const isShooting = commonData.use === '射撃';
+            commonData.place = isShooting ?
+                document.getElementById('consumptionPlaceSelect').value :
+                document.getElementById('consumptionPlaceInput').value;
+            commonData.results = form.results.value;
+
+            // Validate Consumption: must represent a reduction (negative)
+            // BUT spec says UI sends value, backend subtracts? 
+            // Wait, earlier I wrote registerData: "Consumption... sends quantity... sheet.appendRow(..., quantity)"
+            // If I send positive quantity here, it adds. I need to send NEGATIVE for consumption.
+            // Or send positive and let backend handle.
+            // Spec says: "Consumption... appends row... quantity is consumption amount".
+            // If I calculate inventory as Sum of Quantity, Consumption must be negative.
+            // Let's make sure we send NEGATIVE for consumption.
+        } else {
+            // Purchase
+            commonData.place = form.place.value; // Store name
+        }
+
+        // Submit separate request for each bullet type with > 0 quantity
+        const requests = [];
+        inputs.forEach(input => {
+            let qty = parseInt(input.value);
+            if (qty > 0) {
+                if (mode === 'consumption') qty = -qty; // Consumption is negative
+
+                const req = Object.assign({}, commonData);
+                req.bulletType = input.name.replace('qty_', '');
+                req.quantity = qty;
+                requests.push(req);
+            }
+        });
+
+        if (requests.length === 0) {
+            alert('数量が入力されていません');
+            return;
+        }
+
+        submitBatch(requests);
+    }
+
+    function handleTransferSubmit(e) {
+        e.preventDefault();
+        const form = e.target;
+        const data = {
+            mode: 'transfer',
+            date: form.date.value,
+            fromUse: form.fromUse.value,
+            toUse: form.toUse.value,
+            gun: form.gun.value,
+            bulletType: form.bulletType.value,
+            quantity: parseInt(form.quantity.value) // Positive int
+        };
+
+        submitBatch([data]);
+    }
+
+    function submitBatch(requests) {
+        toggleLoading(true);
+        let completed = 0;
+        let errors = 0;
+
+        const onFinish = () => {
+            completed++;
+            if (completed === requests.length) {
+                toggleLoading(false);
+                if (errors === 0) {
+                    alert('登録完了しました');
+                    location.reload(); // Simple reload to refresh inventory
+                }
+            }
+        };
+
+        requests.forEach(req => {
+            google.script.run
+                .withSuccessHandler(onFinish)
+                .withFailureHandler((e) => {
+                    alert('Err: ' + e.message);
+                    errors++;
+                    onFinish();
+                })
+                .registerData(req);
+        });
+    }
+
+    /**
+     * Settings (Master Data CRUD)
+     */
+    const Settings = {
+        currentSheet: null,
+
+        renderTable: (sheetName) => {
+            const tbody = document.querySelector(`#table-${sheetName} tbody`);
+            tbody.innerHTML = '';
+
+            let dataList;
+            if (sheetName === 'gun') dataList = APP_DATA.guns;
+            else if (sheetName === 'bullet_type') dataList = APP_DATA.bulletTypes;
+            else if (sheetName === 'place') dataList = APP_DATA.places;
+            else if (sheetName === 'use') dataList = APP_DATA.uses;
+
+            dataList.forEach((item, index) => {
+                const tr = document.createElement('tr');
+                // Render columns based on sheet type
+                let cols = '';
+                if (sheetName === 'gun') cols = `<td>${item.gun}</td><td>${item.type}</td><td>${item.size}</td>`;
+                else if (sheetName === 'bullet_type') cols = `<td>${item.bullet_type}</td><td>${item.size}</td><td>${item.type}</td>`;
+                else if (sheetName === 'place') cols = `<td>${item.place}</td><td>${item.type}</td>`;
+                else if (sheetName === 'use') cols = `<td>${item.use}</td>`;
+
+                tr.innerHTML = `
+        ${cols}
+        <td>
+          <button class="btn btn-sm btn-danger" onclick="Settings.deleteItem('${sheetName}', ${index})">削除</button>
+        </td>
+      `;
+                tbody.appendChild(tr);
+            });
+        },
+
+        showAddModal: (sheetName) => {
+            Settings.currentSheet = sheetName;
+            const form = document.getElementById('editForm');
+            form.innerHTML = '';
+
+            let fields = [];
+            if (sheetName === 'gun') fields = ['gun', 'type', 'size'];
+            else if (sheetName === 'bullet_type') fields = ['bullet_type', 'size', 'type'];
+            else if (sheetName === 'place') fields = ['place', 'type'];
+            else if (sheetName === 'use') fields = ['use'];
+
+            fields.forEach(f => {
+                form.innerHTML += `
+        <div class="mb-2">
+          <label class="form-label text-capitalize">${f}</label>
+          <input type="text" class="form-control" name="${f}" required>
+        </div>
+      `;
+            });
+
+            const modal = new bootstrap.Modal(document.getElementById('editModal'));
+            modal.show();
+        },
+
+        save: () => {
+            const form = document.getElementById('editForm');
+            if (!form.reportValidity()) return;
+
+            const sheetName = Settings.currentSheet;
+            const formData = new FormData(form);
+            const data = {};
+            formData.forEach((value, key) => data[key] = value);
+
+            toggleLoading(true);
+            google.script.run
+                .withSuccessHandler(() => {
+                    alert('追加しました');
+                    location.reload();
+                })
+                .withFailureHandler((e) => {
+                    toggleLoading(false);
+                    alert('Error: ' + e.message);
+                })
+                .updateMasterData(sheetName, 'add', data);
+        },
+
+        deleteItem: (sheetName, rowIndex) => {
+            if (!confirm('本当に削除しますか？')) return;
+
+            toggleLoading(true);
+            google.script.run
+                .withSuccessHandler(() => {
+                    alert('削除しました');
+                    location.reload();
+                })
+                .withFailureHandler((e) => {
+                    toggleLoading(false);
+                    alert('Error: ' + e.message);
+                })
+                .updateMasterData(sheetName, 'delete', { rowIndex: rowIndex });
+        }
+    };
+</script>

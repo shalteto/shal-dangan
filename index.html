@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Custom CSS -->
+    <?!= include('css'); ?>
+  </head>
+  <body>
+    <div class="container-fluid p-0">
+      
+      <!-- Navigation Tabs -->
+      <ul class="nav nav-tabs nav-justified mb-3" id="mainTab" role="tablist">
+        <li class="nav-item" role="presentation">
+          <button class="nav-link active" id="consumption-tab" data-bs-toggle="tab" data-bs-target="#consumption" type="button" role="tab">消費</button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" id="purchase-tab" data-bs-toggle="tab" data-bs-target="#purchase" type="button" role="tab">購入</button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" id="transfer-tab" data-bs-toggle="tab" data-bs-target="#transfer" type="button" role="tab">用途変更</button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" id="settings-tab" data-bs-toggle="tab" data-bs-target="#settings" type="button" role="tab">設定</button>
+        </li>
+      </ul>
+
+      <!-- Tab Content -->
+      <div class="tab-content px-2 pb-5" id="mainTabContent">
+        
+        <!-- === 消費 (Consumption) === -->
+        <div class="tab-pane fade show active" id="consumption" role="tabpanel">
+          <form id="consumptionForm">
+            <input type="hidden" name="mode" value="consumption">
+            
+            <div class="mb-3">
+              <label class="form-label">日付</label>
+              <input type="date" class="form-control" name="date" required>
+            </div>
+            
+            <div class="mb-3">
+              <label class="form-label">用途</label>
+              <select class="form-select" name="use" id="consumptionUse" required>
+                <option value="" selected disabled>選択してください</option>
+                <!-- Dynamic Options -->
+              </select>
+            </div>
+            
+            <div class="mb-3">
+              <label class="form-label">場所</label>
+              <div id="consumptionPlaceContainer">
+                <!-- Dynamically swapped between Select (Shooting Range) and Text (Hunting) -->
+                <select class="form-select" name="place" id="consumptionPlaceSelect" style="display:none;">
+                  <option value="" selected disabled>射撃場を選択</option>
+                </select>
+                <input type="text" class="form-control" name="place" id="consumptionPlaceInput" placeholder="消費場所を入力" style="display:none;">
+              </div>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label">捕獲個体 (任意)</label>
+              <textarea class="form-control" name="results" rows="2"></textarea>
+            </div>
+            
+            <div class="mb-3">
+              <label class="form-label">使用銃</label>
+              <select class="form-select" name="gun" id="consumptionGun" required>
+                <option value="" selected disabled>選択してください</option>
+                <!-- Dynamic Options -->
+              </select>
+            </div>
+            
+            <!-- Bullet Selection Section -->
+            <div id="consumptionBulletSection">
+              <!-- Dynamic Rows: Bullet Type Name | Current Inventory | [-1] [Qty] [+1] -->
+            </div>
+            
+            <div class="d-grid gap-2 mt-4">
+              <button type="submit" class="btn btn-primary btn-lg">記録する</button>
+            </div>
+          </form>
+        </div>
+        
+        <!-- === 購入 (Purchase) === -->
+        <div class="tab-pane fade" id="purchase" role="tabpanel">
+          <form id="purchaseForm">
+            <input type="hidden" name="mode" value="purchase">
+            
+            <div class="mb-3">
+              <label class="form-label">日付</label>
+              <input type="date" class="form-control" name="date" required>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label">購入店</label>
+              <select class="form-select" name="place" id="purchasePlace" required>
+                <option value="" selected disabled>選択してください</option>
+                <!-- Dynamic Options (Gun Shops) -->
+              </select>
+            </div>
+            
+            <div class="mb-3">
+              <label class="form-label">用途</label>
+              <select class="form-select" name="use" id="purchaseUse" required>
+                <option value="" selected disabled>選択してください</option>
+                <!-- Dynamic Options -->
+              </select>
+            </div>
+            
+            <div class="mb-3">
+              <label class="form-label">使用銃</label>
+              <select class="form-select" name="gun" id="purchaseGun" required>
+                <option value="" selected disabled>選択してください</option>
+                <!-- Dynamic Options (Excluding Air Guns) -->
+              </select>
+            </div>
+            
+            <div id="purchaseBulletSection">
+              <!-- Dynamic Rows: Bullet Type | [+10] [+1] [Qty] [-1] [-10] -->
+            </div>
+            
+            <div class="d-grid gap-2 mt-4">
+              <button type="submit" class="btn btn-primary btn-lg">購入を記録</button>
+            </div>
+          </form>
+        </div>
+        
+        <!-- === 用途変更 (Transfer) === -->
+        <div class="tab-pane fade" id="transfer" role="tabpanel">
+          <form id="transferForm">
+            <input type="hidden" name="mode" value="transfer">
+            <input type="hidden" name="date" id="transferDate"> <!-- Set to today automatically -->
+            
+            <div class="card mb-3 bg-light">
+              <div class="card-body">
+                <h5 class="card-title">変更元 (From)</h5>
+                
+                <div class="mb-2">
+                  <label class="form-label small">用途</label>
+                  <select class="form-select" name="fromUse" id="transferFromUse" required>
+                    <option value="" selected disabled>選択してください</option>
+                  </select>
+                </div>
+                
+                <div class="mb-2">
+                  <label class="form-label small">銃</label>
+                  <select class="form-select" name="gun" id="transferGun" required>
+                    <option value="" selected disabled>選択してください</option>
+                  </select>
+                </div>
+                
+                <div class="mb-2">
+                  <label class="form-label small">弾種</label>
+                  <select class="form-select" name="bulletType" id="transferBulletType" required>
+                    <option value="" selected disabled>選択してください</option>
+                  </select>
+                </div>
+                
+                <div class="text-end text-muted small">
+                  現在庫: <span id="transferCurrentInventory" class="fw-bold">0</span> 発
+                </div>
+              </div>
+            </div>
+            
+            <div class="text-center mb-3">
+              ⬇
+            </div>
+            
+            <div class="card mb-3 border-primary">
+              <div class="card-body">
+                <h5 class="card-title">変更先 (To)</h5>
+                <div class="mb-2">
+                  <label class="form-label small">用途</label>
+                  <select class="form-select" name="toUse" id="transferToUse" required>
+                    <option value="" selected disabled>選択してください</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            
+            <div class="mb-4">
+              <label class="form-label">移動数量</label>
+              <div class="input-group input-group-lg">
+                <input type="number" class="form-control text-center" name="quantity" id="transferQuantity" min="1" required placeholder="数">
+                <span class="input-group-text">発</span>
+              </div>
+            </div>
+
+            <div class="d-grid gap-2">
+              <button type="submit" class="btn btn-warning btn-lg">変更を確定</button>
+            </div>
+          </form>
+        </div>
+        
+        <!-- === 設定 (Settings) === -->
+        <div class="tab-pane fade" id="settings" role="tabpanel">
+          <ul class="nav nav-pills mb-3" id="settingsTab" role="tablist">
+            <li class="nav-item"><button class="nav-link active" data-bs-toggle="pill" data-bs-target="#set-gun">Gun</button></li>
+            <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#set-bullet">Bullet</button></li>
+            <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#set-place">Place</button></li>
+            <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#set-use">Use</button></li>
+          </ul>
+          
+          <div class="tab-content">
+            <!-- Gun Settings -->
+            <div class="tab-pane fade show active" id="set-gun">
+              <div class="d-flex justify-content-between mb-2">
+                <h5>銃マスタ</h5>
+                <button class="btn btn-sm btn-success" onclick="Settings.showAddModal('gun')">追加</button>
+              </div>
+              <div class="table-responsive">
+                <table class="table table-striped table-sm" id="table-gun">
+                  <thead><tr><th>Gun</th><th>Type</th><th>Size</th><th>Action</th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+             <!-- Bullet Settings -->
+            <div class="tab-pane fade" id="set-bullet">
+               <div class="d-flex justify-content-between mb-2">
+                <h5>弾種マスタ</h5>
+                <button class="btn btn-sm btn-success" onclick="Settings.showAddModal('bullet_type')">追加</button>
+              </div>
+              <div class="table-responsive">
+                <table class="table table-striped table-sm" id="table-bullet_type">
+                  <thead><tr><th>Bullet</th><th>Size</th><th>Type</th><th>Action</th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+            <!-- Place Settings -->
+            <div class="tab-pane fade" id="set-place">
+               <div class="d-flex justify-content-between mb-2">
+                <h5>場所マスタ</h5>
+                <button class="btn btn-sm btn-success" onclick="Settings.showAddModal('place')">追加</button>
+              </div>
+              <div class="table-responsive">
+                 <table class="table table-striped table-sm" id="table-place">
+                  <thead><tr><th>Place</th><th>Type</th><th>Action</th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+            <!-- Use Settings -->
+            <div class="tab-pane fade" id="set-use">
+               <div class="d-flex justify-content-between mb-2">
+                <h5>用途マスタ</h5>
+                <button class="btn btn-sm btn-success" onclick="Settings.showAddModal('use')">追加</button>
+              </div>
+              <div class="table-responsive">
+                <table class="table table-striped table-sm" id="table-use">
+                  <thead><tr><th>Use</th><th>Action</th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+    
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="d-flex justify-content-center align-items-center position-fixed top-0 start-0 w-100 h-100 bg-white bg-opacity-75" style="z-index: 2000; display: none;">
+      <div class="spinner-border text-primary" role="status">
+        <span class="visually-hidden">Loading...</span>
+      </div>
+    </div>
+
+    <!-- Generic Add/Edit Modal -->
+    <div class="modal fade" id="editModal" tabindex="-1">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">編集</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <form id="editForm"></form>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
+            <button type="button" class="btn btn-primary" id="saveEditBtn">保存</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bootstrap Bundle JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Custom JS -->
+    <?!= include('js'); ?>
+  </body>
+</html>
