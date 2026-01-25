@@ -12,7 +12,14 @@
 
     // Loading Indicator
     const toggleLoading = (show) => {
-        document.getElementById('loadingOverlay').style.display = show ? 'flex' : 'none';
+        const el = document.getElementById('loadingOverlay');
+        if (show) {
+            el.classList.add('d-flex');
+            el.style.display = '';
+        } else {
+            el.classList.remove('d-flex');
+            el.style.display = 'none';
+        }
     };
 
     // Initialize
@@ -40,21 +47,32 @@
     };
 
     function onDataLoaded(data) {
-        APP_DATA.guns = data.guns;
-        APP_DATA.bulletTypes = data.bulletTypes;
-        APP_DATA.places = data.places;
-        APP_DATA.uses = data.uses;
-        APP_DATA.inventory = data.inventory || {};
+        try {
+            console.log('Processing data...');
+            APP_DATA.guns = data.guns;
+            APP_DATA.bulletTypes = data.bulletTypes;
+            APP_DATA.places = data.places;
+            APP_DATA.uses = data.uses;
+            APP_DATA.inventory = data.inventory || {};
 
-        renderAllDropdowns();
+            renderAllDropdowns();
 
-        // Initialize Settings Tables
-        Settings.renderTable('gun');
-        Settings.renderTable('bullet_type');
-        Settings.renderTable('place');
-        Settings.renderTable('use');
+            // Initialize Settings Tables
+            if (typeof Settings === 'undefined') {
+                throw new Error('Settings object is not defined yet.');
+            }
+            Settings.renderTable('gun');
+            Settings.renderTable('bullet_type');
+            Settings.renderTable('place');
+            Settings.renderTable('use');
 
-        toggleLoading(false);
+            toggleLoading(false);
+            console.log('UI Ready');
+        } catch (e) {
+            console.error('Error in onDataLoaded:', e);
+            alert('Client Error: ' + e.message);
+            toggleLoading(false);
+        }
     }
 
     function onFailure(error) {
@@ -402,7 +420,12 @@
         currentSheet: null,
 
         renderTable: (sheetName) => {
-            const tbody = document.querySelector(`#table-${sheetName} tbody`);
+            const selector = `#table-${sheetName} tbody`;
+            const tbody = document.querySelector(selector);
+            if (!tbody) {
+                console.error(`Table body not found: ${selector}`);
+                return;
+            }
             tbody.innerHTML = '';
 
             let dataList;
