@@ -429,9 +429,19 @@
             }
         });
 
+        // 消費モードで数量入力がない場合でも登録可能（弾消費なしの狩猟・有害記録）
         if (requests.length === 0) {
-            alert('数量が入力されていません');
-            return;
+            if (mode === 'consumption') {
+                // 弾消費なしで登録（日付、用途、場所、銃のみ）
+                const req = Object.assign({}, commonData);
+                req.bulletType = '';
+                req.quantity = '';
+                requests.push(req);
+            } else {
+                // 購入の場合は数量必須
+                alert('数量が入力されていません');
+                return;
+            }
         }
 
         submitBatch(requests);
@@ -513,7 +523,7 @@
                 const tr = document.createElement('tr');
                 let cols = '';
                 if (sheetName === 'gun') cols = `<td>${item.gun}</td><td>${item.type}</td><td>${item.size}</td>`;
-                else if (sheetName === 'bullet_type') cols = `<td>${item.bullet_type}</td><td>${item.size}</td><td>${item.type}</td>`;
+                else if (sheetName === 'bullet_type') cols = `<td>${item.bullet_type}</td><td>${item.size}</td><td>${item.type}</td><td>${item.category || ''}</td>`;
                 else if (sheetName === 'place') cols = `<td>${item.place}</td><td>${item.type}</td>`;
                 else if (sheetName === 'use') cols = `<td>${item.use}</td>`;
 
@@ -533,7 +543,7 @@
             form.innerHTML = '';
 
             if (sheetName === 'bullet_type') {
-                // 弾種類: size と type から bullet_type を自動生成
+                // 弾種類: size と type から bullet_type を自動生成、category はテキスト入力
                 form.innerHTML = `
                     <div class="mb-2">
                         <label class="form-label">Size</label>
@@ -542,6 +552,10 @@
                     <div class="mb-2">
                         <label class="form-label">Type</label>
                         <input type="text" class="form-control" name="type" id="bulletTypeInput" required>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Category</label>
+                        <input type="text" class="form-control" name="category" id="bulletCategoryInput" placeholder="例: スラグ、散弾、空気銃弾">
                     </div>
                     <div class="mb-2">
                         <label class="form-label">Bullet (自動生成)</label>
@@ -619,6 +633,100 @@
                     alert('Error: ' + e.message);
                 })
                 .updateMasterData(sheetName, 'delete', { rowIndex: rowIndex });
+        }
+    };
+
+    // History Management for main table
+    const History = {
+        data: [],
+
+        load: () => {
+            console.log('[History] load() called');
+
+            // 日付フィルターの値を取得
+            const startDate = document.getElementById('historyStartDate').value;
+            const endDate = document.getElementById('historyEndDate').value;
+            const filter = {
+                startDate: startDate || '',
+                endDate: endDate || ''
+            };
+            console.log('[History] Filter:', filter);
+
+            toggleLoading(true);
+            google.script.run
+                .withSuccessHandler((data) => {
+                    console.log('[History] getMainData success:', data);
+                    History.data = data || [];
+                    History.render();
+                    toggleLoading(false);
+                })
+                .withFailureHandler((e) => {
+                    console.error('[History] getMainData error:', e);
+                    toggleLoading(false);
+                    alert('Error: ' + e.message);
+                })
+                .getMainData(filter);
+        },
+
+        clearFilter: () => {
+            document.getElementById('historyStartDate').value = '';
+            document.getElementById('historyEndDate').value = '';
+            History.load();
+        },
+
+        render: () => {
+            console.log('[History] render() called, data length:', History.data.length);
+            const tbody = document.querySelector('#table-main tbody');
+            const emptyMsg = document.getElementById('historyEmpty');
+            tbody.innerHTML = '';
+
+            if (History.data.length === 0) {
+                emptyMsg.style.display = 'block';
+                return;
+            }
+
+            emptyMsg.style.display = 'none';
+
+            // 最新のレコードを上に表示
+            const sorted = [...History.data].reverse();
+
+            sorted.forEach(item => {
+                const tr = document.createElement('tr');
+                const qtyDisplay = item.quantity !== '' ? item.quantity : '-';
+                const bulletDisplay = item.bullet_type || '-';
+                const resultsDisplay = item['note'] || '';
+
+                tr.innerHTML = `
+                    <td class="text-nowrap">${item.date || ''}</td>
+                    <td>${item.use || ''}</td>
+                    <td>${bulletDisplay}</td>
+                    <td class="${item.quantity < 0 ? 'text-danger' : (item.quantity > 0 ? 'text-success' : '')}">${qtyDisplay}</td>
+                    <td>${item.place || ''}</td>
+                    <td>${item.gun || ''}</td>
+                    <td class="small">${resultsDisplay}</td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-danger" onclick="History.delete(${item.rowIndex})">削除</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        },
+
+        delete: (rowIndex) => {
+            if (!confirm('このレコードを削除しますか？\nこの操作は元に戻せません。')) return;
+
+            toggleLoading(true);
+            google.script.run
+                .withSuccessHandler(() => {
+                    alert('削除しました');
+                    History.load();
+                    refreshData(); // 在庫も更新
+                })
+                .withFailureHandler((e) => {
+                    toggleLoading(false);
+                    alert('Error: ' + e.message);
+                })
+                .deleteMainRecord(rowIndex);
         }
     };
 </script>

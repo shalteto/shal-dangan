@@ -16,9 +16,9 @@ function include(filename) {
 function initialSetup() {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const sheets = [
-        { name: 'main', headers: ['date', 'use', 'bullet_type', 'quantity', 'place', 'gun', 'hunting results'] },
+        { name: 'main', headers: ['date', 'use', 'bullet_type', 'category', 'quantity', 'place', 'gun', 'note'] },
         { name: 'gun', headers: ['gun', 'type', 'size'] },
-        { name: 'bullet_type', headers: ['bullet_type', 'size', 'type'] },
+        { name: 'bullet_type', headers: ['bullet_type', 'size', 'type', 'category'] },
         { name: 'place', headers: ['place', 'type'] },
         { name: 'use', headers: ['use'] }
     ];
@@ -87,13 +87,34 @@ function registerData(data) {
     const timestamp = new Date();
     const date = data.date ? new Date(data.date) : timestamp;
 
+    // bullet_typeテーブルからcategoryを取得するヘルパー関数
+    const getCategory = (bulletType) => {
+        if (!bulletType) return '';
+        const bulletSheet = ss.getSheetByName('bullet_type');
+        if (!bulletSheet) return '';
+        const bulletData = bulletSheet.getDataRange().getValues();
+        if (bulletData.length < 2) return '';
+        const headers = bulletData[0];
+        const categoryIndex = headers.indexOf('category');
+        const bulletTypeIndex = headers.indexOf('bullet_type');
+        if (categoryIndex < 0 || bulletTypeIndex < 0) return '';
+        for (let i = 1; i < bulletData.length; i++) {
+            if (bulletData[i][bulletTypeIndex] === bulletType) {
+                return bulletData[i][categoryIndex] || '';
+            }
+        }
+        return '';
+    };
+
     if (data.mode === 'transfer') {
         // 用途変更: 2レコード追加
+        const category = getCategory(data.bulletType);
         // 1. 出庫 (From)
         sheet.appendRow([
             date,
             data.fromUse,
             data.bulletType,
+            category,
             -1 * Math.abs(data.quantity), // 確実にマイナス
             '-', // place
             data.gun,
@@ -105,6 +126,7 @@ function registerData(data) {
             date,
             data.toUse,
             data.bulletType,
+            category,
             Math.abs(data.quantity), // 確実にプラス
             '-', // place
             data.gun,
@@ -115,15 +137,119 @@ function registerData(data) {
         // 購入 または 消費
         // 消費の場合はUI側でマイナス値を送ってくる前提だが、念のためモードで制御してもよい
         // ここでは送られてきた数値をそのまま信じる（UIで制御）
+        // 弾消費なしの場合（狩猟・有害での出動記録）、bulletTypeとquantityは空欄
+        const category = getCategory(data.bulletType);
         sheet.appendRow([
             date,
             data.use,
-            data.bulletType,
-            data.quantity,
+            data.bulletType || '',
+            category,
+            data.quantity !== undefined ? data.quantity : '',
             data.place,
             data.gun,
             data.results || ''
         ]);
+    }
+
+    return { success: true };
+}
+
+/**
+ * mainテーブルのデータを取得する
+ * @param {Object} filter - オプションのフィルター条件
+ * @param {string} filter.startDate - 開始日 (yyyy-MM-dd形式、空欄で下限なし)
+ * @param {string} filter.endDate - 終了日 (yyyy-MM-dd形式、空欄で上限なし)
+ */
+function getMainData(filter) {
+    try {
+        console.log('[getMainData] Starting...');
+        console.log('[getMainData] Filter:', JSON.stringify(filter));
+        const ss = SpreadsheetApp.getActiveSpreadsheet();
+        console.log('[getMainData] Spreadsheet:', ss ? ss.getName() : 'null');
+
+        const sheet = ss.getSheetByName('main');
+        console.log('[getMainData] Sheet:', sheet ? 'found' : 'not found');
+
+        if (!sheet) return [];
+
+        const rows = sheet.getDataRange().getValues();
+        console.log('[getMainData] Total rows:', rows.length);
+
+        if (rows.length < 2) return [];
+
+        const headers = rows.shift();
+        console.log('[getMainData] Headers:', headers);
+
+        // 日付フィルター用の変換
+        let startDate = null;
+        let endDate = null;
+        if (filter && filter.startDate) {
+            startDate = new Date(filter.startDate);
+            startDate.setHours(0, 0, 0, 0);
+        }
+        if (filter && filter.endDate) {
+            endDate = new Date(filter.endDate);
+            endDate.setHours(23, 59, 59, 999);
+        }
+
+        const dateColumnIndex = headers.indexOf('date');
+
+        const result = [];
+        rows.forEach((row, index) => {
+            // 日付フィルター適用
+            if (dateColumnIndex >= 0 && (startDate || endDate)) {
+                const rowDate = row[dateColumnIndex];
+                if (rowDate instanceof Date) {
+                    if (startDate && rowDate < startDate) return;
+                    if (endDate && rowDate > endDate) return;
+                } else if (typeof rowDate === 'string' && rowDate) {
+                    const parsedDate = new Date(rowDate);
+                    if (!isNaN(parsedDate.getTime())) {
+                        if (startDate && parsedDate < startDate) return;
+                        if (endDate && parsedDate > endDate) return;
+                    }
+                }
+            }
+
+            let obj = { rowIndex: index };  // 0-based index from data
+            headers.forEach((header, i) => {
+                let value = row[i];
+                // 日付オブジェクトを文字列に変換
+                if (value instanceof Date) {
+                    value = Utilities.formatDate(value, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+                }
+                // undefinedをnullまたは空文字に変換
+                if (value === undefined) {
+                    value = '';
+                }
+                obj[header] = value;
+            });
+            result.push(obj);
+        });
+
+        console.log('[getMainData] Result count:', result.length);
+
+        // JSON.stringify + JSON.parseで確実にシリアライズ可能な形式に変換
+        const serialized = JSON.parse(JSON.stringify(result));
+        console.log('[getMainData] Serialized successfully');
+        return serialized;
+    } catch (e) {
+        console.error('[getMainData] Error:', e.message);
+        throw e;
+    }
+}
+
+/**
+ * mainテーブルのレコードを削除する
+ */
+function deleteMainRecord(rowIndex) {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName('main');
+
+    // rowIndex is 0-based from data array
+    // Actual sheet row = rowIndex + 2 (header is row 1)
+    if (typeof rowIndex === 'number' && rowIndex >= 0) {
+        sheet.deleteRow(rowIndex + 2);
     }
 
     return { success: true };
