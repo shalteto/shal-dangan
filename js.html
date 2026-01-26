@@ -37,6 +37,16 @@
         setupEventListeners();
     };
 
+    function setupEventListeners() {
+        // Form submit events
+        document.getElementById('consumptionForm').addEventListener('submit', handleFormSubmit);
+        document.getElementById('purchaseForm').addEventListener('submit', handleFormSubmit);
+        document.getElementById('transferForm').addEventListener('submit', handleTransferSubmit);
+
+        // Settings save button
+        document.getElementById('saveEditBtn').addEventListener('click', Settings.save);
+    }
+
     function onDataLoaded(data) {
         try {
             APP_DATA.guns = data.guns;
@@ -178,6 +188,7 @@
         const gun = APP_DATA.guns.find(g => g.gun === gunName);
         if (!gun) return;
 
+        const isAirGun = (gun.type === '空気銃');
         const bullets = APP_DATA.bulletTypes.filter(b => String(b.size) === String(gun.size));
 
         if (bullets.length === 0) {
@@ -185,36 +196,69 @@
             return;
         }
 
-        let hasInventory = false;
+        if (isAirGun) {
+            // 空気銃: 在庫に関係なく全弾種を表示、数量制限なし
+            bullets.forEach(b => {
+                const div = document.createElement('div');
+                div.className = 'bullet-row';
+                div.innerHTML = `
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <div class="bullet-label">${b.bullet_type}</div>
+                            <div class="bullet-info text-muted small">在庫管理対象外</div>
+                        </div>
+                        <div class="d-flex align-items-center bg-light rounded p-1">
+                            <button type="button" class="btn btn-white shadow-sm qty-btn text-danger" onclick="adjustAirGunQty(this, -10)">-10</button>
+                            <button type="button" class="btn btn-white shadow-sm qty-btn text-danger" onclick="adjustAirGunQty(this, -1)">-1</button>
+                            <input type="number" name="qty_${b.bullet_type}" class="qty-input" value="0" readonly>
+                            <button type="button" class="btn btn-white shadow-sm qty-btn text-success" onclick="adjustAirGunQty(this, 1)">+1</button>
+                            <button type="button" class="btn btn-white shadow-sm qty-btn text-success" onclick="adjustAirGunQty(this, 10)">+10</button>
+                        </div>
+                    </div>
+                `;
+                container.appendChild(div);
+            });
+        } else {
+            // 装薬銃: 在庫がある弾種のみ表示、在庫数が上限
+            let hasInventory = false;
 
-        bullets.forEach(b => {
-            const key = `${use}|${b.bullet_type}`;
-            const qty = APP_DATA.inventory[key] || 0;
+            bullets.forEach(b => {
+                const key = `${use}|${b.bullet_type}`;
+                const qty = APP_DATA.inventory[key] || 0;
 
-            if (qty <= 0) return;
-            hasInventory = true;
+                if (qty <= 0) return;
+                hasInventory = true;
 
-            const div = document.createElement('div');
-            div.className = 'bullet-row';
-            div.innerHTML = `
-      <div class="d-flex justify-content-between align-items-center">
-        <div>
-          <div class="bullet-label">${b.bullet_type}</div>
-          <div class="bullet-info text-primary">残: <strong>${qty}</strong> 発</div>
-        </div>
-        <div class="d-flex align-items-center bg-light rounded p-1">
-          <button type="button" class="btn btn-white shadow-sm qty-btn text-danger" onclick="adjustQty(this, -1, ${qty})">-</button>
-          <input type="number" name="qty_${b.bullet_type}" class="qty-input" value="0" readonly>
-          <button type="button" class="btn btn-white shadow-sm qty-btn text-success" onclick="adjustQty(this, 1, ${qty})">+</button>
-        </div>
-      </div>
-    `;
-            container.appendChild(div);
-        });
+                const div = document.createElement('div');
+                div.className = 'bullet-row';
+                div.innerHTML = `
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <div class="bullet-label">${b.bullet_type}</div>
+                            <div class="bullet-info text-primary">残: <strong>${qty}</strong> 発</div>
+                        </div>
+                        <div class="d-flex align-items-center bg-light rounded p-1">
+                            <button type="button" class="btn btn-white shadow-sm qty-btn text-danger" onclick="adjustQty(this, -1, ${qty})">-</button>
+                            <input type="number" name="qty_${b.bullet_type}" class="qty-input" value="0" readonly>
+                            <button type="button" class="btn btn-white shadow-sm qty-btn text-success" onclick="adjustQty(this, 1, ${qty})">+</button>
+                        </div>
+                    </div>
+                `;
+                container.appendChild(div);
+            });
 
-        if (!hasInventory) {
-            container.innerHTML = '<div class="alert alert-secondary text-center">消費可能な弾（在庫）がありません</div>';
+            if (!hasInventory) {
+                container.innerHTML = '<div class="alert alert-secondary text-center">消費可能な弾（在庫）がありません</div>';
+            }
         }
+    }
+
+    function adjustAirGunQty(btn, delta) {
+        const input = btn.parentNode.querySelector('input');
+        let val = parseInt(input.value) || 0;
+        let newVal = val + delta;
+        if (newVal < 0) newVal = 0;
+        input.value = newVal;
     }
 
     function updatePurchaseBullets() {
@@ -488,20 +532,47 @@
             const form = document.getElementById('editForm');
             form.innerHTML = '';
 
-            let fields = [];
-            if (sheetName === 'gun') fields = ['gun', 'type', 'size'];
-            else if (sheetName === 'bullet_type') fields = ['bullet_type', 'size', 'type'];
-            else if (sheetName === 'place') fields = ['place', 'type'];
-            else if (sheetName === 'use') fields = ['use'];
+            if (sheetName === 'bullet_type') {
+                // 弾種類: size と type から bullet_type を自動生成
+                form.innerHTML = `
+                    <div class="mb-2">
+                        <label class="form-label">Size</label>
+                        <input type="text" class="form-control" name="size" id="bulletSizeInput" required>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Type</label>
+                        <input type="text" class="form-control" name="type" id="bulletTypeInput" required>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Bullet (自動生成)</label>
+                        <input type="text" class="form-control bg-light" name="bullet_type" id="bulletNamePreview" readonly>
+                    </div>
+                `;
+                // イベントリスナーを追加
+                setTimeout(() => {
+                    const updatePreview = () => {
+                        const size = document.getElementById('bulletSizeInput').value;
+                        const type = document.getElementById('bulletTypeInput').value;
+                        document.getElementById('bulletNamePreview').value = size && type ? `${size}/${type}` : '';
+                    };
+                    document.getElementById('bulletSizeInput').addEventListener('input', updatePreview);
+                    document.getElementById('bulletTypeInput').addEventListener('input', updatePreview);
+                }, 0);
+            } else {
+                let fields = [];
+                if (sheetName === 'gun') fields = ['gun', 'type', 'size'];
+                else if (sheetName === 'place') fields = ['place', 'type'];
+                else if (sheetName === 'use') fields = ['use'];
 
-            fields.forEach(f => {
-                form.innerHTML += `
-        <div class="mb-2">
-          <label class="form-label text-capitalize">${f}</label>
-          <input type="text" class="form-control" name="${f}" required>
-        </div>
-      `;
-            });
+                fields.forEach(f => {
+                    form.innerHTML += `
+                        <div class="mb-2">
+                            <label class="form-label text-capitalize">${f}</label>
+                            <input type="text" class="form-control" name="${f}" required>
+                        </div>
+                    `;
+                });
+            }
 
             const modal = new bootstrap.Modal(document.getElementById('editModal'));
             modal.show();
