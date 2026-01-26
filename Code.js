@@ -146,8 +146,11 @@ function updateMasterData(sheetName, action, data) {
             // data is an object corresponding to headers
             // We need to map object values to header order
             const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-            const row = headers.map(h => data[h]);
-            sheet.appendRow(row);
+            const row = headers.map(h => data[h] !== undefined ? String(data[h]) : '');
+            const newRowIndex = sheet.getLastRow() + 1;
+            const range = sheet.getRange(newRowIndex, 1, 1, row.length);
+            range.setNumberFormat('@'); // テキスト形式に設定
+            range.setValues([row]);
             break;
 
         case 'delete':
