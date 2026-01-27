@@ -183,6 +183,8 @@
         const container = document.getElementById('consumptionBulletSection');
         container.innerHTML = '';
 
+        updateConsumptionCategories(gunName);
+
         if (!gunName || !use) return;
 
         const gun = APP_DATA.guns.find(g => g.gun === gunName);
@@ -251,6 +253,42 @@
                 container.innerHTML = '<div class="alert alert-secondary text-center">消費可能な弾（在庫）がありません</div>';
             }
         }
+    }
+
+    function updateConsumptionCategories(gunName) {
+        const container = document.getElementById('consumptionCategoryContainer');
+        const options = document.getElementById('consumptionCategoryOptions');
+        const input = document.getElementById('consumptionCategory');
+
+        options.innerHTML = '';
+        input.value = '';
+
+        if (!gunName) {
+            container.style.display = 'none';
+            return;
+        }
+
+        const gun = APP_DATA.guns.find(g => g.gun === gunName);
+        if (!gun) {
+            container.style.display = 'none';
+            return;
+        }
+
+        const categories = [];
+        APP_DATA.bulletTypes.forEach(b => {
+            if (String(b.size) !== String(gun.size)) return;
+            if (!b.category) return;
+            if (!categories.includes(b.category)) categories.push(b.category);
+        });
+
+        container.style.display = 'block';
+
+        if (categories.length === 0) {
+            options.innerHTML = '<div class="text-muted small">カテゴリが未登録です</div>';
+            return;
+        }
+
+        renderOptionButtons('consumptionCategoryOptions', categories, 'consumptionCategory');
     }
 
     function adjustAirGunQty(btn, delta) {
@@ -433,9 +471,14 @@
         if (requests.length === 0) {
             if (mode === 'consumption') {
                 // 弾消費なしで登録（日付、用途、場所、銃のみ）
+                if (!form.category.value) {
+                    alert('弾消費なしの場合は弾種カテゴリを選択してください');
+                    return;
+                }
                 const req = Object.assign({}, commonData);
                 req.bulletType = '';
                 req.quantity = '';
+                req.category = form.category.value;
                 requests.push(req);
             } else {
                 // 購入の場合は数量必須

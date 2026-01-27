@@ -137,8 +137,10 @@ function registerData(data) {
         // 購入 または 消費
         // 消費の場合はUI側でマイナス値を送ってくる前提だが、念のためモードで制御してもよい
         // ここでは送られてきた数値をそのまま信じる（UIで制御）
-        // 弾消費なしの場合（狩猟・有害での出動記録）、bulletTypeとquantityは空欄
-        const category = getCategory(data.bulletType);
+        // 弾消費なしの場合（狩猟・有害での出動記録）はcategoryをUIから受け取る
+        const category = data.bulletType
+            ? (getCategory(data.bulletType) || data.category || '')
+            : (data.category || '');
         sheet.appendRow([
             date,
             data.use,
