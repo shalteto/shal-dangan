@@ -91,6 +91,13 @@
                         <!-- Dynamic Rows -->
                     </div>
 
+                    <div class="mb-3 mt-3" id="consumptionCategoryContainer" style="display:none;">
+                        <label class="form-label text-muted small mb-1">弾種カテゴリ（弾消費なしの場合は必須）</label>
+                        <div id="consumptionCategoryOptions" class="option-group"></div>
+                        <input type="hidden" name="category" id="consumptionCategory">
+                        <div class="text-muted small">弾消費がある場合は未選択でもOK</div>
+                    </div>
+
                     <div class="d-grid gap-2 mt-4">
                         <button type="submit" class="btn btn-primary btn-lg py-3">記録する</button>
                     </div>
