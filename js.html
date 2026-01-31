@@ -30,9 +30,17 @@
             .withFailureHandler(onFailure)
             .getMetaData();
 
-        const today = new Date().toISOString().split('T')[0];
-        document.querySelectorAll('input[type="date"]').forEach(el => el.value = today);
-        document.getElementById('transferDate').value = today;
+        const today = new Date();
+        const todayStr = today.toISOString().split('T')[0];
+        const oneMonthAgo = new Date(today.getFullYear(), today.getMonth() - 1, today.getDate());
+        const startDateStr = oneMonthAgo.toISOString().split('T')[0];
+
+        document.querySelectorAll('input[type="date"]').forEach(el => {
+            if (el.id === 'historyStartDate' || el.id === 'historyEndDate') return;
+            el.value = todayStr;
+        });
+        document.getElementById('historyStartDate').value = startDateStr;
+        document.getElementById('historyEndDate').value = todayStr;
 
         setupEventListeners();
     };
@@ -730,8 +738,8 @@
 
             emptyMsg.style.display = 'none';
 
-            // 最新のレコードを上に表示
-            const sorted = [...History.data].reverse();
+            // 日付の昇順で表示
+            const sorted = [...History.data].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 
             sorted.forEach(item => {
                 const tr = document.createElement('tr');
