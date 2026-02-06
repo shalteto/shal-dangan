@@ -305,3 +305,66 @@ function updateMasterData(sheetName, action, data) {
 
     return { success: true };
 }
+
+/**
+ * mainテーブルのレコードを更新する
+ */
+function updateMainRecord(data) {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName('main');
+
+    // rowIndex checks
+    if (typeof data.rowIndex !== 'number' || data.rowIndex < 0) {
+        throw new Error('Invalid rowIndex');
+    }
+
+    const rowNumber = data.rowIndex + 2; // header is row 1, data starts at row 2, rowIndex 0 is row 2
+
+    // date
+    const date = data.date ? new Date(data.date) : new Date();
+
+    // get category
+    // bullet_typeテーブルからcategoryを取得する helper (reuse logic from registerData or duplicate)
+    // defined inside registerData, let's redefine or make a helper function. 
+    // Since it's inside registerData, I can't call it. I'll duplicate logic for now to keep it simple or make a shared helper.
+    // Making a shared helper is better but requires refactoring registerData. 
+    // I will duplicate strictly the necessary part for now to minimize diff, or just implementing it here.
+
+    const getCategory = (bulletType) => {
+        if (!bulletType) return '';
+        const bulletSheet = ss.getSheetByName('bullet_type');
+        if (!bulletSheet) return '';
+        const bulletData = bulletSheet.getDataRange().getValues();
+        if (bulletData.length < 2) return '';
+        const headers = bulletData[0];
+        const categoryIndex = headers.indexOf('category');
+        const bulletTypeIndex = headers.indexOf('bullet_type');
+        if (categoryIndex < 0 || bulletTypeIndex < 0) return '';
+        for (let i = 1; i < bulletData.length; i++) {
+            if (bulletData[i][bulletTypeIndex] === bulletType) {
+                return bulletData[i][categoryIndex] || '';
+            }
+        }
+        return '';
+    };
+
+    const category = data.bullet_type
+        ? (getCategory(data.bullet_type) || data.category || '')
+        : (data.category || '');
+
+    // Headers: ['date', 'use', 'bullet_type', 'category', 'quantity', 'place', 'gun', 'note']
+    const rowValues = [
+        date,
+        data.use,
+        data.bullet_type || '',
+        category,
+        data.quantity,
+        data.place,
+        data.gun,
+        data.note || ''
+    ];
+
+    sheet.getRange(rowNumber, 1, 1, 8).setValues([rowValues]);
+
+    return { success: true };
+}

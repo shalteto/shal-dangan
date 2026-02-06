@@ -7,7 +7,8 @@
         bulletTypes: [],
         places: [],
         uses: [],
-        inventory: {}
+        inventory: {},
+        modalMode: 'settings' // 'settings' or 'history'
     };
 
     // Loading Indicator
@@ -52,7 +53,13 @@
         document.getElementById('transferForm').addEventListener('submit', handleTransferSubmit);
 
         // Settings save button
-        document.getElementById('saveEditBtn').addEventListener('click', Settings.save);
+        document.getElementById('saveEditBtn').addEventListener('click', () => {
+            if (APP_DATA.modalMode === 'history') {
+                History.saveEdit();
+            } else {
+                Settings.save();
+            }
+        });
     }
 
     function onDataLoaded(data) {
@@ -589,6 +596,7 @@
         },
 
         showAddModal: (sheetName) => {
+            APP_DATA.modalMode = 'settings';
             Settings.currentSheet = sheetName;
             const form = document.getElementById('editForm');
             form.innerHTML = '';
@@ -756,6 +764,7 @@
                     <td>${item.gun || ''}</td>
                     <td class="small">${resultsDisplay}</td>
                     <td>
+                        <button class="btn btn-sm btn-outline-primary me-1" onclick="History.edit(${item.rowIndex})">編集</button>
                         <button class="btn btn-sm btn-outline-danger" onclick="History.delete(${item.rowIndex})">削除</button>
                     </td>
                 `;
@@ -770,14 +779,125 @@
             google.script.run
                 .withSuccessHandler(() => {
                     alert('削除しました');
-                    History.load();
-                    refreshData(); // 在庫も更新
+                    History.load(); // リスト更新
+                    refreshData(); // 在庫も更新（inventory再計算）
                 })
                 .withFailureHandler((e) => {
                     toggleLoading(false);
                     alert('Error: ' + e.message);
                 })
                 .deleteMainRecord(rowIndex);
+        },
+
+        edit: (rowIndex) => {
+            APP_DATA.modalMode = 'history';
+            const item = History.data.find(d => d.rowIndex === rowIndex);
+            if (!item) return;
+
+            const form = document.getElementById('editForm');
+            form.innerHTML = '';
+
+            // Generate Options Helpers
+            const createSelect = (name, list, selected, keyName) => {
+                let html = `<select class="form-select" name="${name}">`;
+                html += `<option value="">(選択なし)</option>`;
+                list.forEach(opt => {
+                    const val = keyName ? opt[keyName] : opt;
+                    const isSelected = val === selected ? 'selected' : '';
+                    html += `<option value="${val}" ${isSelected}>${val}</option>`;
+                });
+                html += `</select>`;
+                return html;
+            };
+
+            // uses
+            const useSelect = createSelect('use', APP_DATA.uses, item.use, 'use');
+            // guns
+            const gunSelect = createSelect('gun', APP_DATA.guns, item.gun, 'gun');
+            // bullet_types
+            const bulletSelect = createSelect('bullet_type', APP_DATA.bulletTypes, item.bullet_type, 'bullet_type');
+
+            // places (datalist for flexibility + existing filtering logic is complex, just show all or input)
+            // Existing app uses filtered chips. Here we use datalist for simplicity & compactness.
+            const placesList = APP_DATA.places.map(p => p.place);
+            let placeDatalist = '<datalist id="editPlaceOptions">';
+            placesList.forEach(p => { placeDatalist += `<option value="${p}">`; });
+            placeDatalist += '</datalist>';
+
+            form.innerHTML = `
+                <input type="hidden" name="rowIndex" value="${item.rowIndex}">
+                
+                <div class="mb-2">
+                    <label class="form-label">Date</label>
+                    <input type="date" class="form-control" name="date" value="${item.date}" required>
+                </div>
+                
+                <div class="mb-2">
+                    <label class="form-label">Use</label>
+                    ${useSelect}
+                </div>
+                
+                <div class="mb-2">
+                    <label class="form-label">Gun</label>
+                    ${gunSelect}
+                </div>
+                
+                <div class="mb-2">
+                    <label class="form-label">Bullet Type</label>
+                    ${bulletSelect}
+                </div>
+                
+                <div class="mb-2">
+                    <label class="form-label">Quantity</label>
+                    <input type="number" class="form-control" name="quantity" value="${item.quantity !== '' ? item.quantity : 0}" required>
+                    <div class="form-text">消費はマイナス、購入はプラスで入力</div>
+                </div>
+                
+                <div class="mb-2">
+                    <label class="form-label">Place</label>
+                    <input type="text" class="form-control" name="place" value="${item.place}" list="editPlaceOptions">
+                    ${placeDatalist}
+                </div>
+                
+                <div class="mb-2">
+                    <label class="form-label">Note</label>
+                    <textarea class="form-control" name="note" rows="2">${item.note || ''}</textarea>
+                </div>
+            `;
+
+            const modal = new bootstrap.Modal(document.getElementById('editModal'));
+            modal.show();
+        },
+
+        saveEdit: () => {
+            const form = document.getElementById('editForm');
+            if (!form.reportValidity()) return;
+
+            const formData = new FormData(form);
+            const data = {};
+            formData.forEach((value, key) => data[key] = value);
+
+            // Quantity conversion
+            if (data.quantity) data.quantity = parseInt(data.quantity);
+            if (data.rowIndex) data.rowIndex = parseInt(data.rowIndex);
+
+            toggleLoading(true);
+            google.script.run
+                .withSuccessHandler(() => {
+                    alert('更新しました');
+                    // Close modal
+                    const el = document.getElementById('editModal');
+                    const modal = bootstrap.Modal.getInstance(el);
+                    modal.hide();
+
+                    History.load();
+                    refreshData();
+                })
+                .withFailureHandler((e) => {
+                    toggleLoading(false);
+                    alert('Error: ' + e.message);
+                })
+                .updateMainRecord(data);
         }
     };
 </script>
